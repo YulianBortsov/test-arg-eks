@@ -1,0 +1,89 @@
+---
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test-app
+---
+# ConfigMap for custom index.html
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: index-html-configmap
+  namespace: test-app
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html>
+    <body>
+        <h1>Hello from test-app!</h1>
+        <p>If you see this, traffic is flowing correctly through ALB -> NGINX Controller -> Pod</p>
+    </body>
+    </html>
+---
+# Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-app
+  namespace: test-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: test-app
+  template:
+    metadata:
+      labels:
+        app: test-app
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+        # Add a custom index.html to easily identify this deployment
+        volumeMounts:
+        - name: custom-index
+          mountPath: /usr/share/nginx/html
+      volumes:
+      - name: custom-index
+        configMap:
+          name: index-html-configmap
+---
+
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-app-service
+  namespace: test-app
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+  selector:
+    app: test-app
+
+---
+# Nginx Ingress (not ALB)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: test-app-ingress
+  namespace: test-app
+spec:
+  ingressClassName: nginx
+  rules:
+   - host: test-app.ybort.shop
+     http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: test-app-service
+            port:
+              number: 80
